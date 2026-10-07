@@ -1,0 +1,42 @@
+name: repro
+
+# Cancelling one background step: does it interrupt another background
+# step that is still running? Each leg passes only if the bystander
+# survives the cancel and finishes on its own.
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  cancel:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+        attempt: [1, 2, 3, 4, 5]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    steps:
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Target
+        id: target
+        background: true
+        run: node -e "process.on('SIGINT',()=>{console.log('target got SIGINT');process.exit(0)}); setInterval(()=>{},1000)"
+
+      - name: Bystander
+        id: bystander
+        background: true
+        run: node -e "process.on('SIGINT',()=>{console.log('bystander got SIGINT');process.exit(3)}); setTimeout(()=>console.log('bystander finished on its own'),20000)"
+
+      - name: Let both start
+        shell: bash
+        run: sleep 3
+
+      - name: Cancel the target only
+        cancel: target
+
+      - name: Wait for the bystander
+        wait: bystander
